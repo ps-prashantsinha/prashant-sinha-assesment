@@ -1,405 +1,220 @@
 # Crop Production & Yield Dashboard
 
-A comprehensive interactive dashboard for analyzing Indian agriculture crop production data, built with Streamlit and Plotly. This application provides real-time insights into crop yields, production trends, and identifies critical yield decline patterns across states and districts.
+An interactive dashboard for analyzing Indian agriculture crop production data using Streamlit and Plotly. The application provides insights into crop yields, production trends, and identifies critical yield decline patterns across states and districts.
 
----
+## Overview
 
-## 📋 Table of Contents
+This dashboard analyzes agricultural data from India to provide insights into crop production trends, yield efficiency, and critical yield decline detection. The key success metric is the automatic detection of states with more than 10% yield decline over 5-year periods, classified by severity (Moderate/High/Critical).
 
-- [Overview](#overview)
-- [Architecture](#architecture)
-- [Data Processing Logic](#data-processing-logic)
-- [Features](#features)
-- [Installation & Setup](#installation--setup)
-- [Deployment](#deployment)
-- [Usage Guide](#usage-guide)
-- [Technical Details](#technical-details)
-- [File Structure](#file-structure)
+## How It Works
 
----
+The application is built with Streamlit and uses Plotly for interactive visualizations. It processes a 30MB+ CSV dataset containing 345,000+ records of Indian agriculture data.
 
-## 🎯 Overview
+### Data Processing Pipeline
 
-This dashboard analyzes agricultural data from India, providing insights into:
-- **Crop production trends** across states and districts
-- **Yield efficiency** analysis (Production per unit Area)
-- **Critical yield decline detection** with automated alerts
-- **Interactive geographical visualizations** using choropleth maps
-- **Multi-dimensional filtering** for granular analysis
+**Data Loading and Preprocessing**
 
-**Key Success Metric**: Automatically detects and highlights states with **>10% yield decline** over 5-year periods, classified by severity (Moderate/High/Critical).
+The `load_data()` function handles the initial data processing:
 
----
+1. Loads the CSV file and strips whitespace from column names
+2. Parses the Year column from "YYYY-MM" format to integer (e.g., "2020-21" becomes 2020)
+3. Calculates Yield as Production divided by Area
+4. Handles division by zero by replacing infinity values with NaN
+5. Cleans text fields (State, District, Crop, Season) by stripping whitespace
+6. Removes rows where Crop is null
+7. Returns a cleaned DataFrame
 
-## 🏗️ Architecture
+The function uses Streamlit's `@st.cache_data` decorator so data is loaded only once per session.
 
-### Application Stack
+**Yield Decline Detection Algorithm**
 
-```
-┌─────────────────────────────────────┐
-│     Streamlit Web Interface         │
-│  (Frontend + Backend Integration)   │
-└──────────────┬──────────────────────┘
-               │
-┌──────────────▼──────────────────────┐
-│      Data Processing Layer          │
-│  • Pandas DataFrames                │
-│  • NumPy Calculations               │
-│  • Caching (@st.cache_data)         │
-└──────────────┬──────────────────────┘
-               │
-┌──────────────▼──────────────────────┐
-│    Visualization Layer              │
-│  • Plotly Express                   │
-│  • Plotly Graph Objects             │
-│  • Interactive Charts               │
-└──────────────┬──────────────────────┘
-               │
-┌──────────────▼──────────────────────┐
-│         Data Sources                │
-│  • CSV (30MB+ dataset)              │
-│  • GeoJSON (India state boundaries) │
-└─────────────────────────────────────┘
-```
+The `calculate_yield_decline()` function identifies problematic yield trends:
 
-### Component Architecture
+For each combination of Crop and State:
+- Filters data for the specified time period (default 5 years)
+- Calculates average yield for the early period (first 2 years)
+- Calculates average yield for the recent period (last 2 years)
+- Computes decline percentage: ((early_yield - recent_yield) / early_yield) * 100
+- If decline exceeds 10%, classifies severity:
+  - Critical: decline > 30%
+  - High: decline between 20-30%
+  - Moderate: decline between 10-20%
+- Returns a sorted DataFrame with Crop, State, Decline_Percentage, Early_Yield, Recent_Yield, and Severity
 
-The application follows a modular design pattern:
+**Correlation Analysis**
 
-1. **Data Layer** (`load_data()`, `load_geojson()`)
-   - CSV parsing and preprocessing
-   - Data type conversions
-   - Yield calculation
-   - Caching for performance
+The `prepare_correlation_data()` function computes Pearson correlation coefficients between Area, Production, and Yield, returning a 3x3 correlation matrix used for the heatmap visualization.
 
-2. **Processing Layer** (Data transformation functions)
-   - `calculate_yield_decline()`: Identifies yield decline patterns
-   - `prepare_correlation_data()`: Correlation matrix computation
-   - `prepare_time_series()`: Time-based aggregations
-   - `get_state_average_yield()`: State-level metrics
+**Time Series Aggregation**
 
-3. **Visualization Layer** (Plotting functions)
-   - Interactive Plotly charts
-   - Choropleth maps
-   - Multi-axis time series
-   - Scatter plots and bar charts
+The `prepare_time_series()` function groups data by a specified dimension (typically Year) and aggregates:
+- Area: Sum of total cultivated area
+- Production: Sum of total production
+- Yield: Mean average efficiency
 
-4. **UI Layer** (`main()`)
-   - Streamlit components
-   - Filter controls
-   - Layout management
-   - User interactions
+### Application Architecture
 
----
+The code is organized into four layers:
 
-## 🔄 Data Processing Logic
+**Data Layer** - Functions that load and cache data:
+- `load_data()`: CSV parsing and preprocessing
+- `load_geojson()`: GeoJSON loading for map visualization
 
-### 1. Data Loading & Preprocessing
+**Processing Layer** - Functions that transform data:
+- `calculate_yield_decline()`: Identifies yield decline patterns
+- `prepare_correlation_data()`: Correlation matrix computation
+- `prepare_time_series()`: Time-based aggregations
+- `get_state_average_yield()`: State-level metrics
 
-**Function**: `load_data()`
+**Visualization Layer** - Functions that create charts:
+- `plot_correlation_matrix()`: Heatmap showing relationships
+- `plot_time_series()`: Multi-line chart with dual y-axis
+- `plot_top_districts()`: Horizontal bar chart
+- `plot_yield_vs_area()`: Scatter plot with size encoding
+- `plot_yield_area_scatter()`: Aggregated scatter plot
+- `plot_cropwise_production()`: Multi-line crop comparison
 
-```python
-Process Flow:
-1. Load CSV → Parse columns → Strip whitespace
-2. Extract Year from "YYYY-MM" format → Convert to integer
-3. Calculate Yield = Production / Area
-4. Handle infinity values (division by zero)
-5. Clean text fields (State, District, Crop, Season)
-6. Remove null Crop entries
-7. Return cleaned DataFrame
-```
+**UI Layer** - The `main()` function that handles:
+- Filter controls in the sidebar
+- Layout management with tabs and columns
+- User interactions and state management
 
-**Key Transformations**:
-- **Year Parsing**: `"2020-21"` → `2020` (integer)
-- **Yield Calculation**: `Yield = Production / Area`
-- **Infinity Handling**: Replace `inf` and `-inf` with `NaN`
-- **Text Cleaning**: Strip whitespace from all string columns
+## Features
 
-**Caching**: Uses `@st.cache_data` decorator for performance optimization (data loaded once per session).
+### Filters
 
-### 2. Yield Decline Detection
+All filters in the sidebar support multi-select:
 
-**Function**: `calculate_yield_decline(df, years=5)`
+- State: Default is Gujarat, cascades to District filter
+- District: Auto-filtered based on selected states
+- Crop: Default is Rice, supports multiple crop comparison
+- Season: Options include Kharif, Rabi, Summer
+- Year Range: Multi-select from available years, default is last 6 years
 
-**Algorithm**:
-```
-For each (Crop, State) combination:
-  1. Filter data for last N years
-  2. Calculate average yield for:
-     - Early period: First 2 years
-     - Recent period: Last 2 years
-  3. Compute decline percentage:
-     decline_pct = ((early_yield - recent_yield) / early_yield) * 100
-  4. If decline_pct > 10%:
-     - Classify severity:
-       • Critical: > 30%
-       • High: 20-30%
-       • Moderate: 10-20%
-     - Add to alert list
-  5. Return sorted DataFrame by decline percentage
-```
-
-**Output Schema**:
-- `Crop`: Crop name
-- `State`: State name
-- `Decline_Percentage`: Percentage decline
-- `Early_Yield`: Average yield in early period
-- `Recent_Yield`: Average yield in recent period
-- `Severity`: Classification (Critical/High/Moderate)
-
-### 3. Correlation Analysis
-
-**Function**: `prepare_correlation_data(df)`
-
-Computes Pearson correlation coefficients between:
-- Area (hectares)
-- Production (tonnes)
-- Yield (tonnes/hectare)
-
-Returns a 3x3 correlation matrix for heatmap visualization.
-
-### 4. Time Series Aggregation
-
-**Function**: `prepare_time_series(df, group_by='Year')`
-
-**Aggregation Logic**:
-- **Area**: Sum (total cultivated area)
-- **Production**: Sum (total production)
-- **Yield**: Mean (average efficiency)
-
-Groups data by specified dimension (Year, State, Crop, etc.).
-
----
-
-## 🎨 Features
-
-### Interactive Filters (Sidebar)
-
-All filters support **multi-select** for flexible analysis:
-
-1. **State Filter**
-   - Default: Gujarat (or random state)
-   - Cascades to District filter
-
-2. **District Filter**
-   - Auto-filtered based on selected states
-   - Default: All districts in selected states
-
-3. **Crop Filter**
-   - Default: Rice (or random crop)
-   - Supports multiple crop comparison
-
-4. **Season Filter**
-   - Options: Kharif, Rabi, Summer, etc.
-   - Default: Kharif (or random season)
-
-5. **Year Range Selector**
-   - Multi-select from available years
-   - Default: Last 6 years
-
-**Filter Summary**: Displays filtered record count and date range.
+The sidebar displays a summary showing filtered record count and date range.
 
 ### Dashboard Tab
 
-#### 1. Correlation Matrix Heatmap
-- **Type**: Plotly Heatmap
-- **Purpose**: Shows relationships between Area, Production, and Yield
-- **Color Scale**: RdYlGn (Red-Yellow-Green)
-- **Interactivity**: Hover to see exact correlation values
+**Correlation Matrix Heatmap**
+Shows Pearson correlation between Area, Production, and Yield using a Red-Yellow-Green color scale. Hover to see exact values.
 
-#### 2. Time Series Chart
-- **Type**: Multi-axis line chart (dual y-axis)
-- **Primary Axis**: Area and Production
-- **Secondary Axis**: Yield
-- **Features**: 
-  - Line + markers for trend visibility
-  - Unified hover mode
-  - Color-coded lines
+**Time Series Chart**
+Multi-axis line chart with Area and Production on the primary y-axis and Yield on the secondary y-axis. Includes markers and unified hover mode.
 
-#### 3. Top Districts Bar Chart
-- **Type**: Horizontal bar chart
-- **Metric**: Total production
-- **Features**:
-  - Top 10 districts
-  - Color gradient by production volume
-  - Auto-sorted (ascending order)
+**Top Districts Bar Chart**
+Horizontal bar chart showing the top 10 producing districts with color gradient by production volume.
 
-#### 4. Yield vs Area Scatter Plot
-- **Type**: Scatter plot with size encoding
-- **X-axis**: Production Area
-- **Y-axis**: Yield
-- **Size**: Production volume
-- **Color**: Crop type
-- **Sampling**: Random 5000 points (if dataset > 5000 rows)
+**Yield vs Area Scatter Plot**
+Scatter plot where x-axis is Production Area, y-axis is Yield, size represents Production volume, and color represents Crop type. If dataset has more than 5000 rows, it randomly samples 5000 points for performance.
 
-#### 5. Yield vs Area (Aggregated)
-- **Type**: Scatter plot
-- **Aggregation**: By State and Crop
-- **Color**: State
-- **Hover Data**: Crop, Area
+**Yield vs Area Aggregated**
+Scatter plot aggregated by State and Crop, colored by State.
 
-#### 6. Crop-wise Production Time Series
-- **Type**: Multi-line chart
-- **Purpose**: Compare production trends across crops
-- **Features**: Markers for data points, vertical legend
+**Crop-wise Production Time Series**
+Multi-line chart comparing production trends across different crops over time.
 
 ### Map View Tab
 
-#### 1. Interactive Choropleth Map
-- **Data Source**: `india_state_geo.json` (GeoJSON format)
-- **Color Encoding**: Average Yield by state
-- **Color Scale**: YlGn (Yellow-Green)
-- **Features**:
-  - Hover tooltips with Yield, Production, Area
-  - Auto-fit bounds to India
-  - Clickable states (for future drill-down)
+**Interactive Choropleth Map**
+Uses the `india_state_geo.json` file to display a choropleth map where states are colored by average yield (Yellow-Green scale). Hover tooltips show Yield, Production, and Area. The map auto-fits to India's boundaries.
 
-#### 2. District-Level Analysis
-- **State Selector**: Dropdown to choose state
-- **Visualizations**:
-  - **Top 10 Districts**: Horizontal bar chart
-  - **Year-over-Year Trend**: Dual-axis time series (Production + Yield)
-  - **Statistics Table**: Aggregated metrics by district
+**District-Level Analysis**
+After selecting a state from the dropdown:
+- Top 10 Districts bar chart showing production
+- Year-over-Year Trend with dual-axis (Production and Yield)
+- Statistics table with aggregated metrics by district
 
 ### Critical Alerts System
 
-**Yield Decline Detection**:
-- Automatically runs on filtered data
-- Displays alert metrics:
-  - Total alerts count
-  - Critical alerts (>30% decline)
-  - Average decline percentage
-- **Expandable Table**: Shows top 10 declines with full details
+The yield decline detection runs automatically on filtered data and displays:
+- Total number of alerts
+- Count of critical alerts (>30% decline)
+- Average decline percentage
+- Expandable table showing top 10 declines with full details
 
----
+## Installation and Setup
 
-## 🚀 Installation & Setup
+Requirements:
+- Python 3.11 or higher
+- pip package manager
+- 2GB+ RAM for processing the large dataset
 
-### Prerequisites
+**Step 1: Get the code**
 
-- Python 3.8 or higher
-- pip (Python package manager)
-- 2GB+ RAM (for large dataset processing)
+Clone the repository or download and extract the ZIP file.
 
-### Step 1: Clone or Download Repository
+**Step 2: Create virtual environment (recommended)**
 
+Windows:
 ```bash
-# If using Git
-git clone <repository-url>
-cd prashant-sinha-assesment
-
-# Or download and extract ZIP file
-```
-
-### Step 2: Create Virtual Environment (Recommended)
-
-```bash
-# Windows
 python -m venv venv
 venv\Scripts\activate
+```
 
-# macOS/Linux
+macOS/Linux:
+```bash
 python3 -m venv venv
 source venv/bin/activate
 ```
 
-### Step 3: Install Dependencies
+**Step 3: Install dependencies**
 
 ```bash
 pip install -r requirements.txt
 ```
 
-**Dependencies** (from `requirements.txt`):
-- `streamlit` - Web framework
-- `streamlit_autorefresh` - Auto-refresh functionality
-- `plotly` - Interactive visualizations
-- `pandas` - Data manipulation
-- `numpy` - Numerical computations
+The requirements.txt includes:
+- streamlit (web framework)
+- streamlit_autorefresh (auto-refresh functionality)
+- plotly (interactive visualizations)
+- pandas (data manipulation)
+- numpy (numerical computations)
 
-### Step 4: Verify Data Files
+**Step 4: Verify data files**
 
-Ensure these files are present in the project directory:
-- ✅ `India Agriculture Crop Production.csv` (30MB+)
-- ✅ `india_state_geo.json` (85MB+)
+Make sure these files are in the project directory:
+- India Agriculture Crop Production.csv (30MB+)
+- india_state_geo.json (85MB+)
 
----
+## Running the Application
 
-## 🌐 Deployment
+**Local deployment:**
 
-### Local Deployment
-
-#### Option 1: Standard Run
-
+Standard run:
 ```bash
 streamlit run app.py
 ```
 
-The dashboard will be available at:
-- **Local URL**: http://localhost:8501
-- **Network URL**: http://<your-ip>:8501
+The dashboard will be available at http://localhost:8501
 
-#### Option 2: Custom Port
-
+Custom port:
 ```bash
 streamlit run app.py --server.port 8080
 ```
 
-#### Option 3: Headless Mode (Server)
-
+Headless mode for servers:
 ```bash
 streamlit run app.py --server.headless true
 ```
 
-### Production Deployment
+**Streamlit Cloud deployment:**
 
-#### Streamlit Cloud (Recommended)
+1. Push code to GitHub
+2. Go to share.streamlit.io
+3. Connect your GitHub repository
+4. Select branch (main) and main file (app.py)
+5. Click Deploy
 
-1. **Push to GitHub**:
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit"
-   git remote add origin <your-repo-url>
-   git push -u origin main
-   ```
+**Docker deployment:**
 
-2. **Deploy on Streamlit Cloud**:
-   - Go to [share.streamlit.io](https://share.streamlit.io)
-   - Connect GitHub repository
-   - Select branch: `main`
-   - Main file: `app.py`
-   - Click "Deploy"
-
-3. **Configuration** (optional):
-   Create `.streamlit/config.toml`:
-   ```toml
-   [theme]
-   primaryColor = "#2E7D32"
-   backgroundColor = "#FFFFFF"
-   secondaryBackgroundColor = "#F5F5F5"
-   textColor = "#262730"
-   font = "sans serif"
-
-   [server]
-   maxUploadSize = 200
-   enableXsrfProtection = true
-   ```
-
-#### Docker Deployment
-
-Create `Dockerfile`:
+Create a Dockerfile:
 ```dockerfile
 FROM python:3.9-slim
-
 WORKDIR /app
-
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
 COPY . .
-
 EXPOSE 8501
-
 CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
 ```
 
@@ -409,291 +224,42 @@ docker build -t crop-dashboard .
 docker run -p 8501:8501 crop-dashboard
 ```
 
-#### Heroku Deployment
+## Performance Optimizations
 
-1. Create `setup.sh`:
-   ```bash
-   mkdir -p ~/.streamlit/
-   echo "\
-   [server]\n\
-   headless = true\n\
-   port = $PORT\n\
-   enableCORS = false\n\
-   \n\
-   " > ~/.streamlit/config.toml
-   ```
+**Data Caching**
+The `@st.cache_data` decorator is used on `load_data()` and `load_geojson()`. Cache persists across user sessions and only invalidates when data files change.
 
-2. Create `Procfile`:
-   ```
-   web: sh setup.sh && streamlit run app.py
-   ```
+**Sampling Strategy**
+Scatter plots sample 5000 random points if the dataset exceeds 5000 rows to maintain performance while preserving statistical representativeness.
 
-3. Deploy:
-   ```bash
-   heroku create your-app-name
-   git push heroku main
-   ```
+**Lazy Loading**
+The GeoJSON file is loaded only when the Map View tab is accessed, with error handling for missing files.
 
----
+## Data Quality Handling
 
-## 📖 Usage Guide
+**Missing Values:**
+- Rows with null Crop values are dropped
+- Empty Season values are filled with empty string
+- Infinity values in Yield (from division by zero) are replaced with NaN
 
-### Basic Workflow
+**Data Validation:**
+- Year column is parsed with error handling
+- Type conversions are applied (string to int for Year)
+- All text fields have whitespace trimmed
 
-1. **Launch Dashboard**:
-   ```bash
-   streamlit run app.py
-   ```
+## Dataset Information
 
-2. **Select Filters** (Left Sidebar):
-   - Choose State(s) of interest
-   - Select Crop(s) to analyze
-   - Pick Season(s) and Year range
+Source: India Agriculture Crop Production Dataset
+Size: 30MB+ with 345,000+ records
 
-3. **Explore Visualizations**:
-   - **Dashboard Tab**: Overview charts and trends
-   - **Map View Tab**: Geographical analysis
+Columns:
+- State: Indian state name
+- District: District name
+- Year: Year in "YYYY-MM" format (parsed to integer)
+- Season: Growing season (Kharif, Rabi, Summer, etc.)
+- Crop: Crop name
+- Area: Cultivated area in hectares
+- Production: Total production in tonnes
 
-4. **Review Alerts**:
-   - Check yield decline alerts at the top
-   - Expand table for detailed analysis
-
-### Advanced Features
-
-#### Auto-Refresh
-- Dashboard auto-refreshes every 100 seconds
-- Configured via `st_autorefresh(interval=100000)`
-
-#### Data Export
-- Use Plotly's built-in export (camera icon on charts)
-- Formats: PNG, SVG, JPEG
-
-#### Performance Optimization
-- Data is cached on first load
-- Subsequent filter changes are instant
-- Large scatter plots are sampled (5000 points max)
-
----
-
-## 🔧 Technical Details
-
-### Performance Optimizations
-
-1. **Data Caching**:
-   - `@st.cache_data` decorator on `load_data()` and `load_geojson()`
-   - Cache persists across user sessions
-   - Invalidates only when data files change
-
-2. **Sampling Strategy**:
-   - Scatter plots sample 5000 random points if dataset > 5000 rows
-   - Maintains statistical representativeness
-
-3. **Lazy Loading**:
-   - GeoJSON loaded only when Map View tab is accessed
-   - Error handling for missing files
-
-### Data Quality Handling
-
-- **Missing Values**: 
-  - Dropped rows with null `Crop` values
-  - Filled empty `Season` with empty string
-  - Replaced infinity values in `Yield` with `NaN`
-
-- **Data Validation**:
-  - Year parsing with error handling
-  - Type conversions (string → int for Year)
-  - Whitespace trimming on all text fields
-
-### Responsive Design
-
-- **Wide Layout**: `layout="wide"` for maximum screen usage
-- **Column Layouts**: 2-column grids for side-by-side comparisons
-- **Custom CSS**: Styled alert boxes and metric cards
-
-### Browser Compatibility
-
-Tested on:
-- ✅ Chrome 90+
-- ✅ Firefox 88+
-- ✅ Safari 14+
-- ✅ Edge 90+
-
----
-
-## 📁 File Structure
-
-```
-prashant-sinha-assesment/
-│
-├── app.py                                  # Main application (658 lines)
-│   ├── Data Loading & Preprocessing        # Lines 73-103
-│   ├── Data Processing Functions           # Lines 106-166
-│   ├── Visualization Functions             # Lines 169-371
-│   └── Main Application Logic              # Lines 375-658
-│
-├── requirements.txt                        # Python dependencies (5 packages)
-│
-├── India Agriculture Crop Production.csv   # Dataset (30MB, 345K+ records)
-│   └── Columns: State, District, Year, Season, Crop, Area, Production
-│
-├── india_state_geo.json                    # GeoJSON boundaries (85MB)
-│   └── Properties: NAME_1 (state names), geometry
-│
-├── README.md                               # This file
-│
-└── .gitignore                              # Git ignore rules
-```
-
-### Code Organization
-
-**app.py** is structured into logical sections:
-
-1. **Imports & Configuration** (Lines 1-23)
-   - Library imports
-   - Streamlit page config
-   - Auto-refresh setup
-
-2. **Custom CSS** (Lines 26-62)
-   - Styling for headers, alerts, metrics
-
-3. **Constants** (Lines 64-69)
-   - Data path
-   - Default filter values
-
-4. **Preprocessing Functions** (Lines 73-103)
-   - `load_data()`: CSV loading and cleaning
-   - `load_geojson()`: GeoJSON loading
-
-5. **Data Processing Functions** (Lines 106-166)
-   - `calculate_yield_decline()`: Alert detection
-   - `get_state_average_yield()`: State metrics
-   - `prepare_correlation_data()`: Correlation matrix
-   - `prepare_time_series()`: Time-based aggregation
-
-6. **Visualization Functions** (Lines 169-371)
-   - `plot_correlation_matrix()`: Heatmap
-   - `plot_time_series()`: Multi-line chart
-   - `plot_top_districts()`: Bar chart
-   - `plot_yield_vs_area()`: Scatter plot
-   - `plot_yield_area_scatter()`: Aggregated scatter
-   - `plot_cropwise_production()`: Crop comparison
-
-7. **Main Application** (Lines 375-658)
-   - Filter controls
-   - Layout management
-   - Tab navigation
-   - Alert display
-   - Map view with district drill-down
-
----
-
-## 🎯 Key Metrics & Insights
-
-### Success Metric Implementation
-
-**Yield Decline Detection** (>10% over 5 years):
-
-```python
-# Severity Classification
-if decline_pct > 30:
-    severity = 'Critical'
-elif decline_pct > 20:
-    severity = 'High'
-else:
-    severity = 'Moderate'
-```
-
-**Display Logic**:
-- Alerts shown only if `len(decline_df) > 0`
-- Top 10 declines displayed in expandable table
-- Metrics: Total alerts, Critical count, Average decline
-
-### Data Insights
-
-The dashboard enables analysis of:
-- **Temporal Trends**: Year-over-year production changes
-- **Spatial Patterns**: State and district comparisons
-- **Crop Performance**: Yield efficiency across crops
-- **Seasonal Variations**: Season-specific production
-- **Correlations**: Relationships between Area, Production, Yield
-
----
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-1. **Port Already in Use**:
-   ```bash
-   streamlit run app.py --server.port 8080
-   ```
-
-2. **Data File Not Found**:
-   - Verify `India Agriculture Crop Production.csv` is in project root
-   - Check file name spelling (case-sensitive on Linux/Mac)
-
-3. **GeoJSON Map Not Loading**:
-   - Ensure `india_state_geo.json` is present
-   - Dashboard will show error message and fallback to statistics
-
-4. **Slow Performance**:
-   - Clear Streamlit cache: Press 'C' in browser
-   - Reduce filter selections (fewer states/crops)
-   - Check available RAM (2GB+ recommended)
-
-5. **Module Not Found**:
-   ```bash
-   pip install -r requirements.txt --upgrade
-   ```
-
----
-
-## 📊 Dataset Information
-
-**Source**: India Agriculture Crop Production Dataset
-
-**Size**: 30MB+ (345,000+ records)
-
-**Columns**:
-- `State`: Indian state name
-- `District`: District name
-- `Year`: Year in "YYYY-MM" format (parsed to integer)
-- `Season`: Growing season (Kharif, Rabi, Summer, etc.)
-- `Crop`: Crop name
-- `Area`: Cultivated area (hectares)
-- `Production`: Total production (tonnes)
-
-**Derived Column**:
-- `Yield`: Production / Area (tonnes per hectare)
-
-**Time Range**: Multiple years (check dashboard for exact range)
-
----
-
-## 🤝 Contributing
-
-To contribute or modify:
-
-1. Fork the repository
-2. Create a feature branch
-3. Make changes
-4. Test thoroughly
-5. Submit pull request
-
----
-
-## 📝 License
-
-This project is created for assessment purposes.
-
----
-
-## 📧 Contact
-
-For questions or issues, please contact the repository owner.
-
----
-
-**Last Updated**: December 2025
-
-**Version**: 1.0.0
+Derived column:
+- Yield: Production / Area (tonnes per hectare)
