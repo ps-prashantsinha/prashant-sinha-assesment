@@ -1,10 +1,8 @@
-import io
 import random
 import warnings
-from datetime import datetime
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
@@ -14,6 +12,14 @@ from streamlit_autorefresh import st_autorefresh
 
 warnings.filterwarnings("ignore")
 st_autorefresh(interval=100000, limit=None, key="datarefresh")
+
+DATA_PATH = "India Agriculture Crop Production.csv"
+GEO_PATH = 'india_state_geo.json'
+
+DEFAULT_STATE = 'Gujarat'
+DEFAULT_CROP = 'Rice'
+DEFAULT_SEASON = 'Kharif'
+DEFAULT_YEARS_LIST = range(2016,2021,1)
 
 
 st.set_page_config(
@@ -61,13 +67,6 @@ st.markdown("""
 unsafe_allow_html=True
 )
 
-DATA_PATH = "India Agriculture Crop Production.csv"
-
-DEFAULT_STATE = 'Gujarat'
-DEFAULT_CROP = 'Rice'
-DEFAULT_SEASON = 'Kharif'
-DEFAULT_YEARS_LIST = range(2016,2021,1)
-
 # ==================== PREPROCESSING ====================
 
 @st.cache_data
@@ -98,7 +97,7 @@ def load_data():
 @st.cache_data
 def load_geojson():
     import json
-    with open('india_state_geo.json', 'r', encoding='utf-8') as f:
+    with open(GEO_PATH, 'r', encoding='utf-8') as f:
         return json.load(f)
 
 # ==================== DATA PROCESSING FUNCTIONS ====================
@@ -314,19 +313,8 @@ def plot_yield_map(df):
     return fig
 
 def plot_yield_area_scatter(yield_prod):
-    """Scatter plot of Yield vs Production Area (Aggregated by State and Crop)"""
-    # Aggregate data by State and Crop
-    # yield_prod = df.groupby(['State', 'District' 'Crop']).agg({
-    #     'Area': 'sum',
-    #     'Production': 'sum',
-    #     'Yield': 'mean'
-    # }).reset_index()
-    
-    # Remove any rows with missing values
+    """Scatter plot of Yield vs Production Area (Aggregated by State and Crop)"""    
     yield_prod = yield_prod.dropna(subset=['Area', 'Yield'])
-    
-    # if len(yield_prod) > 1000:
-    #     yield_prod = yield_prod.sample(1000, random_state=42)
     
     fig = px.scatter(
         yield_prod,
@@ -346,7 +334,6 @@ def plot_yield_area_scatter(yield_prod):
     fig.update_layout(height=400)
     
     return fig
-
 
 
 def plot_cropwise_production(df):
@@ -542,7 +529,7 @@ def main():
             )
             
             # Display the map
-            st.plotly_chart(fig_map, use_container_width=True, key='india_state_map')
+            st.plotly_chart(fig_map, width='stretch', key='india_state_map')
             
         except FileNotFoundError:
             st.error("GeoJSON file 'india_state_geo.json' not found. Please ensure the file is in the correct location.")
@@ -595,7 +582,7 @@ def main():
                     yaxis={'categoryorder': 'total ascending'}
                 )
                 
-                st.plotly_chart(fig_district_bar, use_container_width=True)
+                st.plotly_chart(fig_district_bar, width='stretch')
             
             with col2:
                 st.markdown(f"#### Year-over-Year Trend in {selected_state_for_districts}")
@@ -640,7 +627,7 @@ def main():
                     hovermode='x unified'
                 )
                 
-                st.plotly_chart(fig_trend, use_container_width=True)
+                st.plotly_chart(fig_trend, width='stretch')
             
             # District statistics table
             st.markdown(f"#### District Statistics for {selected_state_for_districts}")
@@ -651,7 +638,7 @@ def main():
             }).round(2).reset_index()
             district_stats.columns = ['District', 'Total Production', 'Total Area', 'Avg Yield']
             district_stats = district_stats.sort_values('Total Production', ascending=False)
-            st.dataframe(district_stats, use_container_width=True, hide_index=True)
+            st.dataframe(district_stats, width='stretch', hide_index=True)
 
 if __name__ == "__main__":
     main()
